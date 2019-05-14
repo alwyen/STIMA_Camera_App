@@ -1,16 +1,15 @@
 package com.test.alexy.lightcapture;
+//Settings --> Developer options --> USB debugging
 
 import android.Manifest;
 import android.annotation.TargetApi;
-import android.app.Activity;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
-import android.graphics.Camera;
-import android.graphics.Color;
 import android.graphics.ImageFormat;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
@@ -28,19 +27,23 @@ import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbEndpoint;
 import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.media.Image;
 import android.media.ImageReader;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.provider.Settings;
 import android.support.annotation.NonNull;
 import android.support.annotation.RequiresApi;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Range;
-import android.util.Rational;
 import android.util.Size;
 import android.util.SparseIntArray;
 import android.view.Surface;
@@ -54,6 +57,8 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -61,26 +66,94 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
-
-import static android.content.Context.CAMERA_SERVICE;
+import java.util.concurrent.TimeUnit;
 
 public class CameraActivity extends AppCompatActivity {
 
+//GPS location
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    private LocationListener locationListener;
+    private LocationManager locationManager;
+    private double latitude;
+    private double longitude;
+
+
+    private Boolean displayGpsStatus() {
+        ContentResolver contentResolver = getBaseContext()
+                .getContentResolver();
+        boolean gpsStatus = Settings.Secure
+                .isLocationProviderEnabled(contentResolver,
+                        LocationManager.GPS_PROVIDER);
+        if (gpsStatus) {
+            return true;
+
+        } else {
+            return false;
+        }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.KITKAT)
+    private void saveGPSLocation(String fileName){
+        String name = Environment.getExternalStorageDirectory()+"/Rolling_Image_GPS_Location";
+        File folder = new File(name);
+        folder.mkdir();
+        try {
+            File file = new File(name + "/" + fileName + ".txt");
+            PrintWriter textFile = new PrintWriter(file);
+            textFile.println(latitude + ";" + longitude);
+            textFile.close();
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void getGPSLocation(){
+        //request permission
+        ActivityCompat.requestPermissions(CameraActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
+        ActivityCompat.requestPermissions(CameraActivity.this, new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
+        ActivityCompat.requestPermissions(CameraActivity.this, new String[]{Manifest.permission.INTERNET}, 1);
+
+        //check permission
+        if (ActivityCompat.checkSelfPermission(CameraActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(CameraActivity.this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION,Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.INTERNET}
+                        ,10);
+            }
+            return;
+        }
+        else{
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 5, 0, locationListener);
+        }
+    }
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//END
+
+    //declare buttons
     private Button startCapture;
-    private Button normalPicutre;
+    private Button normalPicture;
     private Button rollingImage;
     private Button dcImage;
 
+    //create textureView to display live camera image on smartphone
     private TextureView textureView;
 
     private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
-    static{
-        ORIENTATIONS.append(Surface.ROTATION_0,90);
-        ORIENTATIONS.append(Surface.ROTATION_90,0);
-        ORIENTATIONS.append(Surface.ROTATION_180,270);
-        ORIENTATIONS.append(Surface.ROTATION_270,180);
+
+    static {
+        ORIENTATIONS.append(Surface.ROTATION_0, 90);
+        ORIENTATIONS.append(Surface.ROTATION_90, 0);
+        ORIENTATIONS.append(Surface.ROTATION_180, 270);
+        ORIENTATIONS.append(Surface.ROTATION_270, 180);
     }
 
+    //declare variables
     private String cameraID;
     private CameraDevice cameraDevice;
     private Size imageDimension;
@@ -101,12 +174,12 @@ public class CameraActivity extends AppCompatActivity {
     UsbEndpoint endpointIn = null;
     UsbEndpoint endpointOut = null;
 
+    //USB permission
     private static final String ACTION_USB_PERMISSION = "com.android.example.USB_PERMISSION";
     PendingIntent mPermissionIntent;
 
     UsbInterface usbInterface;
     UsbDeviceConnection usbDeviceConnection;
-
 
 
     CameraDevice.StateCallback stateCallback = new CameraDevice.StateCallback() {
@@ -134,33 +207,20 @@ public class CameraActivity extends AppCompatActivity {
             cameraDevice = null; //reset
         }
     };
-/*
-    public static boolean deleteDir(File dir) {
-        if (dir != null && dir.isDirectory()) {
-            String[] children = dir.list();
-            for (int i = 0; i < children.length; i++) {
-                boolean success = deleteDir(new File(dir, children[i]));
-                if (!success) {
-                    return false;
-                }
-            }
-            return dir.delete();
-        } else if(dir!= null && dir.isFile()) {
-            return dir.delete();
-        } else {
-            return false;
-        }
+
+
+    //setting up usb host connection protocol methods
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    @Override
+    protected void onDestroy() {
+        releaseUsb();
+        unregisterReceiver(mUsbReceiver);
+        unregisterReceiver(mUsbDeviceReceiver);
+        super.onDestroy();
     }
-*/
-//setting up usb connection protocol methods
-//////////////////////////////////////////////////////////////////////////////////////////////////////
-@Override
-protected void onDestroy() {
-    releaseUsb();
-    unregisterReceiver(mUsbReceiver);
-    unregisterReceiver(mUsbDeviceReceiver);
-    super.onDestroy();
-}
 
     private void connectUsb() {
 
@@ -219,8 +279,7 @@ protected void onDestroy() {
         if (deviceFound == null) {
             //for usb connection
             Toast.makeText(CameraActivity.this, "device not found", Toast.LENGTH_LONG).show();
-        }
-        else {
+        } else {
             // Search for UsbInterface with Endpoint of USB_ENDPOINT_XFER_BULK,
             // and direction USB_DIR_OUT and USB_DIR_IN
 
@@ -284,13 +343,13 @@ protected void onDestroy() {
                         0, // length
                         0); // timeout
 
-                Toast.makeText(CameraActivity.this,"controlTransfer(SET_CONTROL_LINE_STATE): " + usbResult,Toast.LENGTH_LONG).show();
+                Toast.makeText(CameraActivity.this, "controlTransfer(SET_CONTROL_LINE_STATE): " + usbResult, Toast.LENGTH_LONG).show();
 
                 // baud rate = 9600
                 // 8 data bit
                 // 1 stop bit
-                byte[] encodingSetting = new byte[] { (byte) 0x80, 0x25, 0x00,
-                        0x00, 0x00, 0x00, 0x08 };
+                byte[] encodingSetting = new byte[]{(byte) 0x80, 0x25, 0x00,
+                        0x00, 0x00, 0x00, 0x08};
                 usbResult = usbDeviceConnection.controlTransfer(0x21, // requestType
                         RQSID_SET_LINE_CODING, // SET_LINE_CODING
                         0, // value
@@ -298,7 +357,7 @@ protected void onDestroy() {
                         encodingSetting, // buffer
                         7, // length
                         0); // timeout
-                Toast.makeText(CameraActivity.this,"controlTransfer(RQSID_SET_LINE_CODING): " + usbResult,Toast.LENGTH_LONG).show();
+                Toast.makeText(CameraActivity.this, "controlTransfer(RQSID_SET_LINE_CODING): " + usbResult, Toast.LENGTH_LONG).show();
             }
 
         } else {
@@ -328,7 +387,7 @@ protected void onDestroy() {
                             connectUsb();
                         }
                     } else {
-                        Toast.makeText(CameraActivity.this,"permission denied for device " + device, Toast.LENGTH_LONG).show();
+                        Toast.makeText(CameraActivity.this, "permission denied for device " + device, Toast.LENGTH_LONG).show();
                     }
                 }
             }
@@ -344,7 +403,7 @@ protected void onDestroy() {
 
                 deviceFound = (UsbDevice) intent
                         .getParcelableExtra(UsbManager.EXTRA_DEVICE);
-                Toast.makeText(CameraActivity.this,"ACTION_USB_DEVICE_ATTACHED: \n"+ deviceFound.toString(), Toast.LENGTH_LONG).show();
+                Toast.makeText(CameraActivity.this, "ACTION_USB_DEVICE_ATTACHED: \n" + deviceFound.toString(), Toast.LENGTH_LONG).show();
 
                 connectUsb();
 
@@ -352,15 +411,15 @@ protected void onDestroy() {
 
                 UsbDevice device = (UsbDevice) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
 
-                Toast.makeText(CameraActivity.this,"ACTION_USB_DEVICE_DETACHED: \n" + device.toString(),Toast.LENGTH_LONG).show();
+                Toast.makeText(CameraActivity.this, "ACTION_USB_DEVICE_DETACHED: \n" + device.toString(), Toast.LENGTH_LONG).show();
 
                 if (device != null) {
                     if (device == deviceFound) {
                         releaseUsb();
-                    }else{
-                        Toast.makeText(CameraActivity.this,"device == deviceFound, no call releaseUsb()\n" +device.toString() + "\n" +deviceFound.toString(),Toast.LENGTH_LONG).show();
+                    } else {
+                        Toast.makeText(CameraActivity.this, "device == deviceFound, no call releaseUsb()\n" + device.toString() + "\n" + deviceFound.toString(), Toast.LENGTH_LONG).show();
                     }
-                }else{
+                } else {
                     Toast.makeText(CameraActivity.this,
                             "device == null, no call releaseUsb()", Toast.LENGTH_LONG).show();
                 }
@@ -369,20 +428,53 @@ protected void onDestroy() {
 
     };
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//END
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_camera);
 
-        startCapture = (Button)findViewById(R.id.button);
-        normalPicutre = (Button)findViewById(R.id.button3);
-        rollingImage = (Button)findViewById(R.id.rolling);
-        dcImage = (Button)findViewById(R.id.dc);
+        //location manager instance
+        locationManager = (LocationManager) getApplicationContext().getSystemService(LOCATION_SERVICE);
+
+        locationListener = new LocationListener() {
+            @Override
+            public void onLocationChanged(Location location) {
+                latitude = location.getLatitude();
+                longitude = location.getLongitude();
+            }
+
+            @Override
+            public void onStatusChanged(String provider, int status, Bundle extras) {
+
+            }
+
+            @Override
+            public void onProviderEnabled(String provider) {
+
+            }
+
+            @Override
+            public void onProviderDisabled(String provider) {
+                Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+                startActivity(intent);
+            }
+        };
+
+        getGPSLocation();
+
+        startCapture = (Button) findViewById(R.id.button);
+        normalPicture = (Button) findViewById(R.id.button3);
+        rollingImage = (Button) findViewById(R.id.rolling);
+        dcImage = (Button) findViewById(R.id.dc);
 
 
-        textureView = (TextureView)findViewById(R.id.textureView);
+        textureView = (TextureView) findViewById(R.id.textureView);
         assert textureView != null;
 
         //register the broadcast receiver
@@ -396,30 +488,35 @@ protected void onDestroy() {
         connectUsb();
 
         //rolling image OnClickListener
-        rollingImage.setOnClickListener(new View.OnClickListener(){
+        rollingImage.setOnClickListener(new View.OnClickListener() {
             @TargetApi(Build.VERSION_CODES.LOLLIPOP)
             @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
             @Override
-            public void onClick(View view){
-                try{
-                    rollingImageCapture();
-                } catch(Exception e){
-                    Toast.makeText(CameraActivity.this, "Error", Toast.LENGTH_SHORT).show();
+            public void onClick(View view) {
+                try {
+                    //only printing out 17 images when we want 20
+                    for (int i = 0; i < 115; i++) {
+                        rollingImageCapture();
+                    }
+//                    Toast.makeText(CameraActivity.this, "Process Done.", Toast.LENGTH_LONG).show();
+                    //need to delay or else createCameraPreview() will crash the application
+                    TimeUnit.SECONDS.sleep(1);
+                    createCameraPreview();
+                } catch (Exception e) {
                     e.printStackTrace();
                 }
             }
         });
 
         //dc image OnClickListener
-        dcImage.setOnClickListener(new View.OnClickListener(){
+        dcImage.setOnClickListener(new View.OnClickListener() {
             @TargetApi(Build.VERSION_CODES.LOLLIPOP)
             @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
             @Override
-            public void onClick(View view){
-                try{
+            public void onClick(View view) {
+                try {
                     dcImageCapture();
-                } catch(Exception e){
-                    Toast.makeText(CameraActivity.this, "Error", Toast.LENGTH_SHORT).show();
+                } catch (Exception e) {
                     e.printStackTrace();
                 }
             }
@@ -432,56 +529,46 @@ protected void onDestroy() {
             @Override
             public void onClick(View view) {
                 //send certain string to enable first light capture with lcd shutter
-                if(deviceFound != null){
+                if (deviceFound != null) {
 //                    String out = "1";
 //                    byte[] bytesOut = out.getBytes(); //convert String to byte[]
 //                    int usbResult = usbDeviceConnection.bulkTransfer(endpointOut, bytesOut, bytesOut.length, 0);
-                }
-                else{
+                } else {
 //                    Toast.makeText(CameraActivity.this, "Device not found", Toast.LENGTH_SHORT).show();
                 }
 
-                try{
-//                    String out = "1";
-//                    byte[] bytesOut = out.getBytes(); //convert String to byte[]
-//                    for(int i = 0; i < 6; i++) {
-                        modifiedTakePicture();
-//                        int usbResult = usbDeviceConnection.bulkTransfer(endpointOut, bytesOut, bytesOut.length, 0);
-//                    }
-                }catch(Exception e){
-                    Toast.makeText(CameraActivity.this, "Error", Toast.LENGTH_SHORT).show();
+                try {
+                    modifiedTakePicture();
+                    TimeUnit.SECONDS.sleep(1);
+                    createCameraPreview();
+                } catch (Exception e) {
                     e.printStackTrace();
                 }
             }
         });
 
         //normal picture
-        normalPicutre.setOnClickListener(new View.OnClickListener() {
+        normalPicture.setOnClickListener(new View.OnClickListener() {
             @TargetApi(Build.VERSION_CODES.LOLLIPOP)
             @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
             @Override
             public void onClick(View view) {
-                if(deviceFound != null){
-                    String out = "1";
-                    byte[] bytesOut = out.getBytes();
-                    int usbResult = usbDeviceConnection.bulkTransfer(endpointOut, bytesOut, bytesOut.length, 0);
-                }
-                else{
-                    Toast.makeText(CameraActivity.this, "Device not found", Toast.LENGTH_SHORT).show();
-                }
                 takePicture();
             }
         });
     }
 
-
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
     private void rollingImageCapture() {
+//        if(latitude == 0 && longitude == 0){
+//            getGPSLocation();
+//            Toast.makeText(CameraActivity.this, "Location not changed!", Toast.LENGTH_SHORT).show();
+//            return;
+//        }
         if(cameraDevice == null) return;
         CameraManager manager = (CameraManager)getSystemService(CAMERA_SERVICE);
         try{
-
-
+            //set up dimentions of jpeg with current camera jpeg characteristics(?)
             CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraDevice.getId());
             Size[] jpegSizes = null;
             if(characteristics != null){
@@ -497,26 +584,36 @@ protected void onDestroy() {
             imageReader = ImageReader.newInstance(width,height,ImageFormat.JPEG,1);
             List<Surface> outputSurface = new ArrayList<>(2);
             outputSurface.add(imageReader.getSurface());
+
             outputSurface.add(new Surface(textureView.getSurfaceTexture()));
+
+            //EDIT VALUES HERE ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            //EDIT VALUES HERE ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            //EDIT VALUES HERE ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            long expTime = 1250000; //in nanoseconds
+            int ISO = 1000;
+            float aperture = 2.0f;
+            ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
             captureRequestBuilder.addTarget(imageReader.getSurface());
             captureRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF); //auto exposure time, iso, and frame duration is turned off
             captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF); //auto focus turned off
-            captureRequestBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, (long)1250000); //exposure time 1.25ms; value is in nano
-            captureRequestBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, 1000); //set ISO 1000
-            captureRequestBuilder.set(CaptureRequest.LENS_APERTURE, 2.0f); //aperture set to 2.0
+            captureRequestBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, expTime); //exposure time 1.25ms; value is in nano
+            captureRequestBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, ISO); //set ISO 1000
+            captureRequestBuilder.set(CaptureRequest.LENS_APERTURE, aperture); //aperture set to 2.0
 
             int rotation = getWindowManager().getDefaultDisplay().getRotation();
             captureRequestBuilder.set(CaptureRequest.JPEG_ORIENTATION, ORIENTATIONS.get(rotation));
-            
 
-            File folder = new File(Environment.getExternalStorageDirectory()+"/Rolling_Image");
+            File folder = new File(Environment.getExternalStorageDirectory()+"/Rolling_Image_Test");
             folder.mkdir();
             File[] list = folder.listFiles();
             int numFiles = list.length;
             String fileName = "rolling_" + (numFiles+1);
-            Toast.makeText(CameraActivity.this, fileName, Toast.LENGTH_SHORT).show();
+//            Toast.makeText(CameraActivity.this, fileName, Toast.LENGTH_SHORT).show();
             file = new File(folder.getPath()+"/"+fileName+".jpg");
             ImageReader.OnImageAvailableListener readerListener = new ImageReader.OnImageAvailableListener() {
 
@@ -525,11 +622,15 @@ protected void onDestroy() {
                     //initialize image
                     Image image = null;
                     try{
-                        image = imageReader.acquireLatestImage();
+                        image = imageReader.acquireNextImage();
                         ByteBuffer buffer = image.getPlanes()[0].getBuffer();
                         byte[] bytes = new byte[buffer.capacity()];
                         buffer.get(bytes);
                         save(bytes);
+                        //clear the buffer
+                        buffer.clear();
+                        //close the image so that a new one can be started up
+                        image.close();
                     } catch (FileNotFoundException e) {
                         e.printStackTrace();
                     } catch (IOException e){
@@ -554,14 +655,18 @@ protected void onDestroy() {
                 @Override
                 public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
                     super.onCaptureCompleted(session, request, result);
-                    createCameraPreview();
+//                    createCameraPreview();
                 }
             };
+
+            saveGPSLocation(fileName);
 
             cameraDevice.createCaptureSession(outputSurface, new CameraCaptureSession.StateCallback() {
                 @Override
                 public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
                     try{
+//                        cameraCaptureSession.stopRepeating();
+//                        cameraCaptureSession.abortCaptures();
                         cameraCaptureSession.capture(captureRequestBuilder.build(),captureListener,backgroundHandler);
                     } catch (CameraAccessException e) {
                         e.printStackTrace();
@@ -584,8 +689,6 @@ protected void onDestroy() {
         if(cameraDevice == null) return;
         CameraManager manager = (CameraManager)getSystemService(CAMERA_SERVICE);
         try{
-
-
             CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraDevice.getId());
             Size[] jpegSizes = null;
             if(characteristics != null){
@@ -603,10 +706,18 @@ protected void onDestroy() {
             outputSurface.add(imageReader.getSurface());
             outputSurface.add(new Surface(textureView.getSurfaceTexture()));
 
-            long expTime = 16666667;
+            //EDIT VALUES HERE ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            //EDIT VALUES HERE ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            //EDIT VALUES HERE ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            long expTime = 16666667; //in nanoseconds
             int ISO = 1000;
             float aperture = 2.0f;
+            ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+
+            //maybe surfaceview is making the app crash
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
             captureRequestBuilder.addTarget(imageReader.getSurface());
             captureRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF); //auto exposure time, iso, and frame duration is turned off
@@ -624,7 +735,7 @@ protected void onDestroy() {
             File[] list = folder.listFiles();
             int numFiles = list.length;
             String fileName = "dc_" + (numFiles+1);
-            Toast.makeText(CameraActivity.this, fileName, Toast.LENGTH_SHORT).show();
+//            Toast.makeText(CameraActivity.this, fileName, Toast.LENGTH_SHORT).show();
             file = new File(folder.getPath()+"/"+fileName+".jpg");
             ImageReader.OnImageAvailableListener readerListener = new ImageReader.OnImageAvailableListener() {
 
@@ -718,16 +829,12 @@ protected void onDestroy() {
             outputSurface.add(imageReader.getSurface());
             outputSurface.add(new Surface(textureView.getSurfaceTexture()));
 
-            long start = System.nanoTime();
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
             captureRequestBuilder.addTarget(imageReader.getSurface());
             captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
 
             int rotation = getWindowManager().getDefaultDisplay().getRotation();
             captureRequestBuilder.set(CaptureRequest.JPEG_ORIENTATION, ORIENTATIONS.get(rotation));
-
-            double total = (System.nanoTime() - start)/1000000;
-            Toast.makeText(CameraActivity.this, "" + total, Toast.LENGTH_SHORT).show();
 
             File folder = new File(Environment.getExternalStorageDirectory()+"/LightCapture");
             folder.mkdir();
@@ -744,6 +851,7 @@ protected void onDestroy() {
 
             file = new File(folder.getPath()+"/"+date+".jpg");
             ImageReader.OnImageAvailableListener readerListener = new ImageReader.OnImageAvailableListener() {
+
                 @Override
                 public void onImageAvailable(ImageReader imageReader) {
                     //initialize image
@@ -762,6 +870,7 @@ protected void onDestroy() {
                         if(image != null) image.close();
                     }
                 }
+
                 private void save(byte[] bytes) throws IOException{
                     OutputStream outputStream = null;
                     try{
@@ -778,7 +887,6 @@ protected void onDestroy() {
                 @Override
                 public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
                     super.onCaptureCompleted(session, request, result);
-//                    Toast.makeText(CameraActivity.this,"Picture Path: "+file,Toast.LENGTH_SHORT).show();
                     createCameraPreview();
                 }
             };
@@ -787,9 +895,7 @@ protected void onDestroy() {
                 @Override
                 public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
                     try{
-//                        int starting = usbDeviceConnection.bulkTransfer(endpointOut, bytesOut1, bytesOut1.length, 0);
                         cameraCaptureSession.capture(captureRequestBuilder.build(),captureListener,backgroundHandler);
-//                        int end = usbDeviceConnection.bulkTransfer(endpointOut, bytesOut2, bytesOut1.length, 0);
                     } catch (CameraAccessException e) {
                         e.printStackTrace();
                     }
@@ -814,6 +920,7 @@ protected void onDestroy() {
         if(cameraDevice == null) return;
         CameraManager manager = (CameraManager)getSystemService(CAMERA_SERVICE);
 //        Toast.makeText(CameraActivity.this, "Capturing Picture...", Toast.LENGTH_SHORT).show();
+
         try{
 //            String str1 = "\0"; //sent in ascii
 //            String str2 = "5"; //sent in ascii
@@ -897,7 +1004,7 @@ protected void onDestroy() {
                         e.printStackTrace();
                     } catch (IOException e){
                         e.printStackTrace();
-                    } finally{
+                    }finally{
                         if(image != null) image.close();
                     }
                 }
@@ -918,25 +1025,22 @@ protected void onDestroy() {
                 public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
                     super.onCaptureCompleted(session, request, result);
 //                    Toast.makeText(CameraActivity.this,"Picture Path: "+file,Toast.LENGTH_SHORT).show();
-                    createCameraPreview();
+//                    createCameraPreview();
                 }
             };
             cameraDevice.createCaptureSession(outputSurface, new CameraCaptureSession.StateCallback() {
                 @Override
                 public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
                     try{
-//                        List<CaptureRequest> captureList = new ArrayList<CaptureRequest>();
-//
-//                        captureList.add(captureRequestBuilder.build());
-//                        captureList.add(captureRequestBuilder.build());
-//                        captureList.add(captureRequestBuilder.build());
-//                        captureList.add(captureRequestBuilder.build());
-//                        captureList.add(captureRequestBuilder.build());
-//                        captureList.add(captureRequestBuilder.build());
+                        //create a list of capture requests
+                        List<CaptureRequest> captureList = new ArrayList<CaptureRequest>();
+                        for(int i = 0; i < 20; i++){
+                            captureList.add(captureRequestBuilder.build());
+                            captureRequestBuilder.addTarget(imageReader.getSurface());
+                        }
+                        cameraCaptureSession.captureBurst(captureList, captureListener, backgroundHandler);
 
-//                        cameraCaptureSession.stopRepeating(); //meant for setRepeatingRequest or setRepeatingBurst
-//                        cameraCaptureSession.capture(captureRequestBuilder.build(), captureListener, backgroundHandler);
-                        cameraCaptureSession.capture(captureRequestBuilder.build(), captureListener, backgroundHandler);
+
                     } catch (CameraAccessException e) {
                         e.printStackTrace();
                     }
@@ -988,13 +1092,12 @@ protected void onDestroy() {
             Surface surface = new Surface(texture); //creating surface for textureView (?)
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             captureRequestBuilder.addTarget(surface);
+
             cameraDevice.createCaptureSession(Arrays.asList(surface), new CameraCaptureSession.StateCallback() {
                 @Override
                 public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
                     if(cameraDevice == null) return; //camera is closed
-                    //start displaying preview when session is ready
                     captureSession = cameraCaptureSession;
-                    //constantly update the preview
                     captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE,CaptureRequest.CONTROL_AF_MODE_OFF);
                     try{
                         captureSession.setRepeatingRequest(captureRequestBuilder.build(), null, backgroundHandler);
@@ -1020,6 +1123,20 @@ protected void onDestroy() {
             if(grantResults[0] != PackageManager.PERMISSION_GRANTED){
                 Toast.makeText(this, "You can't use camera without permission", Toast.LENGTH_SHORT).show();
                 finish();
+            }
+        }
+        if(requestCode == 10){
+            if (ActivityCompat.checkSelfPermission(CameraActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(CameraActivity.this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION,Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.INTERNET}
+                            ,10);
+                }
+                Toast.makeText(CameraActivity.this, "requesting permission...", Toast.LENGTH_LONG).show();
+                return;
+            }
+            else{
+                Toast.makeText(CameraActivity.this,"requesting location", Toast.LENGTH_SHORT).show();
+                locationManager.requestLocationUpdates("gps", 5, 0, locationListener);
             }
         }
     }
@@ -1091,3 +1208,4 @@ protected void onDestroy() {
         backgroundHandler = new Handler(backgroundThread.getLooper());
     }
 }
+
