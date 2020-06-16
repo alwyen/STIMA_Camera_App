@@ -9,6 +9,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.graphics.ImageFormat;
 import android.graphics.SurfaceTexture;
@@ -43,6 +44,8 @@ import android.support.annotation.RequiresApi;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.util.DisplayMetrics;
+import android.util.Log;
 import android.util.Range;
 import android.util.Size;
 import android.util.SparseIntArray;
@@ -60,6 +63,7 @@ import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -90,8 +94,8 @@ public class CameraActivity extends AppCompatActivity {
                         LocationManager.GPS_PROVIDER);
         if (gpsStatus) {
             return true;
-
-        } else {
+        }
+        else {
             return false;
         }
     }
@@ -163,7 +167,16 @@ public class CameraActivity extends AppCompatActivity {
     private Handler backgroundHandler;
     private HandlerThread backgroundThread;
 
+    private List<String> fileNameList;
+    private List<File> fileList;
+    private int numPictures;
+    private int numTextfiles;
     private File file;
+    private File file2;
+    private File file3;
+    private File file4;
+    private File file5;
+    private File file6;
     private static final int requestPermission = 200;
 
     //phone host variables
@@ -177,10 +190,8 @@ public class CameraActivity extends AppCompatActivity {
     //USB permission
     private static final String ACTION_USB_PERMISSION = "com.android.example.USB_PERMISSION";
     PendingIntent mPermissionIntent;
-
     UsbInterface usbInterface;
     UsbDeviceConnection usbDeviceConnection;
-
 
     CameraDevice.StateCallback stateCallback = new CameraDevice.StateCallback() {
         @TargetApi(Build.VERSION_CODES.LOLLIPOP)
@@ -469,9 +480,9 @@ public class CameraActivity extends AppCompatActivity {
         getGPSLocation();
 
         startCapture = (Button) findViewById(R.id.button);
-        normalPicture = (Button) findViewById(R.id.button3);
-        rollingImage = (Button) findViewById(R.id.rolling);
-        dcImage = (Button) findViewById(R.id.dc);
+//        normalPicture = (Button) findViewById(R.id.button3);
+//        rollingImage = (Button) findViewById(R.id.rolling);
+//        dcImage = (Button) findViewById(R.id.dc);
 
 
         textureView = (TextureView) findViewById(R.id.textureView);
@@ -488,39 +499,36 @@ public class CameraActivity extends AppCompatActivity {
         connectUsb();
 
         //rolling image OnClickListener
-        rollingImage.setOnClickListener(new View.OnClickListener() {
-            @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-            @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-            @Override
-            public void onClick(View view) {
-                try {
-                    //only printing out 17 images when we want 20
-                    for (int i = 0; i < 115; i++) {
-                        rollingImageCapture();
-                    }
-//                    Toast.makeText(CameraActivity.this, "Process Done.", Toast.LENGTH_LONG).show();
-                    //need to delay or else createCameraPreview() will crash the application
-                    TimeUnit.SECONDS.sleep(1);
-                    createCameraPreview();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        });
+//        rollingImage.setOnClickListener(new View.OnClickListener() {
+//            @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+//            @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+//            @Override
+//            public void onClick(View view) {
+//                try {
+//                    rollingImageCapture(100);
+////                    Toast.makeText(CameraActivity.this, "Process Done.", Toast.LENGTH_LONG).show();
+//                    //need to delay or else createCameraPreview() will crash the application
+//                    TimeUnit.SECONDS.sleep(1);
+//                    createCameraPreview();
+//                } catch (Exception e) {
+//                    e.printStackTrace();
+//                }
+//            }
+//        });
 
         //dc image OnClickListener
-        dcImage.setOnClickListener(new View.OnClickListener() {
-            @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-            @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-            @Override
-            public void onClick(View view) {
-                try {
-                    dcImageCapture();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        });
+//        dcImage.setOnClickListener(new View.OnClickListener() {
+//            @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+//            @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+//            @Override
+//            public void onClick(View view) {
+//                try {
+//                    dcImageCapture();
+//                } catch (Exception e) {
+//                    e.printStackTrace();
+//                }
+//            }
+//        });
 
         //first light capture
         startCapture.setOnClickListener(new View.OnClickListener() {
@@ -548,18 +556,18 @@ public class CameraActivity extends AppCompatActivity {
         });
 
         //normal picture
-        normalPicture.setOnClickListener(new View.OnClickListener() {
-            @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-            @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-            @Override
-            public void onClick(View view) {
-                takePicture();
-            }
-        });
+//        normalPicture.setOnClickListener(new View.OnClickListener() {
+//            @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+//            @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+//            @Override
+//            public void onClick(View view) {
+//                takePicture();
+//            }
+//        });
     }
 
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-    private void rollingImageCapture() {
+    private void rollingImageCapture(final int numPics) {
 //        if(latitude == 0 && longitude == 0){
 //            getGPSLocation();
 //            Toast.makeText(CameraActivity.this, "Location not changed!", Toast.LENGTH_SHORT).show();
@@ -599,6 +607,7 @@ public class CameraActivity extends AppCompatActivity {
 
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
             captureRequestBuilder.addTarget(imageReader.getSurface());
+
             captureRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF); //auto exposure time, iso, and frame duration is turned off
             captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF); //auto focus turned off
             captureRequestBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, expTime); //exposure time 1.25ms; value is in nano
@@ -608,13 +617,29 @@ public class CameraActivity extends AppCompatActivity {
             int rotation = getWindowManager().getDefaultDisplay().getRotation();
             captureRequestBuilder.set(CaptureRequest.JPEG_ORIENTATION, ORIENTATIONS.get(rotation));
 
+            //create new list of Strings
+            fileNameList = new ArrayList<String>();
+            //create new list of Files
+            fileList = new ArrayList<File>();
+            //set numPictures to 0
+            numPictures = 0;
+            //set numTextfiles to 0
+            numTextfiles = 0;
+
             File folder = new File(Environment.getExternalStorageDirectory()+"/Rolling_Image_Test");
             folder.mkdir();
             File[] list = folder.listFiles();
             int numFiles = list.length;
-            String fileName = "rolling_" + (numFiles+1);
+            String fileName;
+
+            for(int i = 0; i < numPics; i++){
+                fileName = "rolling_" + (numFiles + 1 + i);
+                fileNameList.add(fileName);
+                file = new File(folder.getPath()+"/"+fileName+".jpg");
+                fileList.add(file);
+            }
+
 //            Toast.makeText(CameraActivity.this, fileName, Toast.LENGTH_SHORT).show();
-            file = new File(folder.getPath()+"/"+fileName+".jpg");
             ImageReader.OnImageAvailableListener readerListener = new ImageReader.OnImageAvailableListener() {
 
                 @Override
@@ -622,15 +647,13 @@ public class CameraActivity extends AppCompatActivity {
                     //initialize image
                     Image image = null;
                     try{
+                        saveGPSLocation(fileNameList.get(numTextfiles));
+                        numTextfiles++;
                         image = imageReader.acquireNextImage();
                         ByteBuffer buffer = image.getPlanes()[0].getBuffer();
                         byte[] bytes = new byte[buffer.capacity()];
                         buffer.get(bytes);
                         save(bytes);
-                        //clear the buffer
-                        buffer.clear();
-                        //close the image so that a new one can be started up
-                        image.close();
                     } catch (FileNotFoundException e) {
                         e.printStackTrace();
                     } catch (IOException e){
@@ -642,8 +665,9 @@ public class CameraActivity extends AppCompatActivity {
                 private void save(byte[] bytes) throws IOException{
                     OutputStream outputStream = null;
                     try{
-                        outputStream = new FileOutputStream(file);
+                        outputStream = new FileOutputStream(fileList.get(numPictures));
                         outputStream.write(bytes);
+                        numPictures++;
                     } finally {
                         if(outputStream != null) outputStream.close();
                     }
@@ -659,15 +683,20 @@ public class CameraActivity extends AppCompatActivity {
                 }
             };
 
-            saveGPSLocation(fileName);
-
             cameraDevice.createCaptureSession(outputSurface, new CameraCaptureSession.StateCallback() {
                 @Override
                 public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
                     try{
-//                        cameraCaptureSession.stopRepeating();
-//                        cameraCaptureSession.abortCaptures();
-                        cameraCaptureSession.capture(captureRequestBuilder.build(),captureListener,backgroundHandler);
+                        //create a list of capture requests
+                        List<CaptureRequest> captureList = new ArrayList<CaptureRequest>();
+                        captureRequestBuilder.addTarget(imageReader.getSurface());
+
+                        for(int i = 0; i < numPics; i++){
+                            captureList.add(captureRequestBuilder.build());
+                            captureRequestBuilder.addTarget(imageReader.getSurface());
+                        }
+
+                        cameraCaptureSession.captureBurst(captureList, captureListener, backgroundHandler);
                     } catch (CameraAccessException e) {
                         e.printStackTrace();
                     }
@@ -727,8 +756,7 @@ public class CameraActivity extends AppCompatActivity {
             captureRequestBuilder.set(CaptureRequest.LENS_APERTURE, aperture); //set aperture
 
             int rotation = getWindowManager().getDefaultDisplay().getRotation();
-            captureRequestBuilder.set(CaptureRequest.JPEG_ORIENTATION, ORIENTATIONS.get(rotation));
-
+            captureRequestBuilder.set(CaptureRequest.JPEG_ORIENTATION, rotation);
 
             File folder = new File(Environment.getExternalStorageDirectory()+"/DC_Image");
             folder.mkdir();
@@ -912,7 +940,6 @@ public class CameraActivity extends AppCompatActivity {
         }
     }
 
-    //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
@@ -946,6 +973,7 @@ public class CameraActivity extends AppCompatActivity {
             outputSurface.add(imageReader.getSurface());
             outputSurface.add(new Surface(textureView.getSurfaceTexture()));
 
+
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
             captureRequestBuilder.addTarget(imageReader.getSurface());
 
@@ -962,11 +990,12 @@ public class CameraActivity extends AppCompatActivity {
 //            Toast.makeText(CameraActivity.this, newLower + "", Toast.LENGTH_LONG).show();
 
             float[] apertures = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES);
-            float numbers = apertures[0];
+            float numbers = apertures[0];Toast.makeText(this, "Permission not granted.", Toast.LENGTH_SHORT).show();
+            finish();
 //            Toast.makeText(CameraActivity.this, "" + numbers, Toast.LENGTH_SHORT).show();
 
             captureRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF);
-            captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF);    ////////////////////////
+//            captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF);    ////////////////////////
 //            captureRequestBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, upper);
             captureRequestBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, newLower); //set digital shutter exposure time to newLower
             captureRequestBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, upperISO); //set to max ISO
@@ -988,31 +1017,50 @@ public class CameraActivity extends AppCompatActivity {
 
             String date = month + "-" + day + "-" + year + "_" + hours + ":" + minutes + ":" + seconds;
 
+            numPictures = 0;
+            fileList = new ArrayList<File>();
             file = new File(folder.getPath()+"/"+date+".jpg");
+            file2 = new File(folder.getPath()+"/"+date+"1.jpg");
+            file3 = new File(folder.getPath()+"/"+date+"2.jpg");
+            file4 = new File(folder.getPath()+"/"+date+"3.jpg");
+            file5 = new File(folder.getPath()+"/"+date+"4.jpg");
+            file6 = new File(folder.getPath()+"/"+date+"5.jpg");
+            fileList.add(file);
+            fileList.add(file2);
+            fileList.add(file3);
+            fileList.add(file4);
+            fileList.add(file5);
+            fileList.add(file6);
+//            Log.d("filename", date);
             ImageReader.OnImageAvailableListener readerListener = new ImageReader.OnImageAvailableListener() {
                 @Override
+                //this happens after the outputSurface is created I think
                 public void onImageAvailable(ImageReader imageReader) {
                     //initialize image
                     Image image = null;
                     try{
-                        image = imageReader.acquireLatestImage();
+//                        backgroundHandler.post(new Image)
+                        image = imageReader.acquireNextImage();
                         ByteBuffer buffer = image.getPlanes()[0].getBuffer();
                         byte[] bytes = new byte[buffer.capacity()];
                         buffer.get(bytes);
                         save(bytes);
+                        Log.d("OnImageAvailable", "saving");
                     } catch (FileNotFoundException e) {
                         e.printStackTrace();
                     } catch (IOException e){
                         e.printStackTrace();
                     }finally{
                         if(image != null) image.close();
+//                        Log.d("OnImageAvailable", "closing");
                     }
                 }
                 private void save(byte[] bytes) throws IOException{
                     OutputStream outputStream = null;
                     try{
-                        outputStream = new FileOutputStream(file);
+                        outputStream = new FileOutputStream(fileList.get(numPictures));
                         outputStream.write(bytes);
+                        numPictures++;
                     } finally {
                         if(outputStream != null) outputStream.close();
                     }
@@ -1034,12 +1082,14 @@ public class CameraActivity extends AppCompatActivity {
                     try{
                         //create a list of capture requests
                         List<CaptureRequest> captureList = new ArrayList<CaptureRequest>();
-                        for(int i = 0; i < 20; i++){
+                        captureRequestBuilder.addTarget(imageReader.getSurface());
+
+                        for(int i = 0; i < 6; i++){
                             captureList.add(captureRequestBuilder.build());
                             captureRequestBuilder.addTarget(imageReader.getSurface());
                         }
-                        cameraCaptureSession.captureBurst(captureList, captureListener, backgroundHandler);
 
+                        cameraCaptureSession.captureBurst(captureList, captureListener, backgroundHandler);
 
                     } catch (CameraAccessException e) {
                         e.printStackTrace();
@@ -1057,7 +1107,6 @@ public class CameraActivity extends AppCompatActivity {
         }
     }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    //
 
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
@@ -1066,7 +1115,6 @@ public class CameraActivity extends AppCompatActivity {
         try{
             cameraID = manager.getCameraIdList()[0]; //get back camera id
             CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraID); //get characteristics of hardware capabilities
-            //use "characteristics" variable to get frame rate(?)
             StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
             assert map != null;
             imageDimension = map.getOutputSizes(SurfaceTexture.class)[0];
@@ -1089,7 +1137,7 @@ public class CameraActivity extends AppCompatActivity {
             SurfaceTexture texture = textureView.getSurfaceTexture();
             assert texture != null;
             texture.setDefaultBufferSize(imageDimension.getWidth(), imageDimension.getHeight());
-            Surface surface = new Surface(texture); //creating surface for textureView (?)
+            Surface surface = new Surface(texture);
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             captureRequestBuilder.addTarget(surface);
 
@@ -1098,7 +1146,7 @@ public class CameraActivity extends AppCompatActivity {
                 public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
                     if(cameraDevice == null) return; //camera is closed
                     captureSession = cameraCaptureSession;
-                    captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE,CaptureRequest.CONTROL_AF_MODE_OFF);
+//                    captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE,CaptureRequest.CONTROL_AF_MODE_OFF);
                     try{
                         captureSession.setRepeatingRequest(captureRequestBuilder.build(), null, backgroundHandler);
                     } catch (CameraAccessException e) {
@@ -1120,8 +1168,8 @@ public class CameraActivity extends AppCompatActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         if(requestCode == requestPermission){
-            if(grantResults[0] != PackageManager.PERMISSION_GRANTED){
-                Toast.makeText(this, "You can't use camera without permission", Toast.LENGTH_SHORT).show();
+            if (grantResults.length > 0 && grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "Permission not granted.", Toast.LENGTH_SHORT).show();
                 finish();
             }
         }
@@ -1166,16 +1214,16 @@ public class CameraActivity extends AppCompatActivity {
     };
 
     //onPause and onResume methods
-    @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR2)
-    @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
     @Override
     protected void onPause(){
         super.onPause();
         stopBackgroundThread();
     }
 
-    @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR2)
-    @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
     private void stopBackgroundThread() {
         backgroundThread.quitSafely();
         try{
@@ -1208,4 +1256,3 @@ public class CameraActivity extends AppCompatActivity {
         backgroundHandler = new Handler(backgroundThread.getLooper());
     }
 }
-
