@@ -102,7 +102,7 @@ public class CameraActivity extends AppCompatActivity {
 
     @RequiresApi(api = Build.VERSION_CODES.KITKAT)
     private void saveGPSLocation(String fileName){
-        String name = Environment.getExternalStorageDirectory()+"/Rolling_Image_GPS_Location";
+        String name = Environment.getExternalStorageDirectory()+"/Captured_Image_GPS_Location";
         File folder = new File(name);
         folder.mkdir();
         try {
@@ -221,8 +221,6 @@ public class CameraActivity extends AppCompatActivity {
 
 
     //setting up usb host connection protocol methods
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     @Override
@@ -439,8 +437,6 @@ public class CameraActivity extends AppCompatActivity {
 
     };
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //END
@@ -973,7 +969,6 @@ public class CameraActivity extends AppCompatActivity {
             outputSurface.add(imageReader.getSurface());
             outputSurface.add(new Surface(textureView.getSurfaceTexture()));
 
-
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
             captureRequestBuilder.addTarget(imageReader.getSurface());
 
@@ -990,8 +985,7 @@ public class CameraActivity extends AppCompatActivity {
 //            Toast.makeText(CameraActivity.this, newLower + "", Toast.LENGTH_LONG).show();
 
             float[] apertures = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES);
-            float numbers = apertures[0];Toast.makeText(this, "Permission not granted.", Toast.LENGTH_SHORT).show();
-            finish();
+            float numbers = apertures[0];
 //            Toast.makeText(CameraActivity.this, "" + numbers, Toast.LENGTH_SHORT).show();
 
             captureRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF);
@@ -1005,7 +999,7 @@ public class CameraActivity extends AppCompatActivity {
             int rotation = getWindowManager().getDefaultDisplay().getRotation();
             captureRequestBuilder.set(CaptureRequest.JPEG_ORIENTATION, ORIENTATIONS.get(rotation));
 
-            File folder = new File(Environment.getExternalStorageDirectory()+"/CaptureBurstTest");
+            File folder = new File(Environment.getExternalStorageDirectory()+"/Captured_Image");
             folder.mkdir();
             Date now = new Date();
             int year = now.getYear() + 1900;
@@ -1017,20 +1011,7 @@ public class CameraActivity extends AppCompatActivity {
 
             String date = month + "-" + day + "-" + year + "_" + hours + ":" + minutes + ":" + seconds;
 
-            numPictures = 0;
-            fileList = new ArrayList<File>();
             file = new File(folder.getPath()+"/"+date+".jpg");
-            file2 = new File(folder.getPath()+"/"+date+"1.jpg");
-            file3 = new File(folder.getPath()+"/"+date+"2.jpg");
-            file4 = new File(folder.getPath()+"/"+date+"3.jpg");
-            file5 = new File(folder.getPath()+"/"+date+"4.jpg");
-            file6 = new File(folder.getPath()+"/"+date+"5.jpg");
-            fileList.add(file);
-            fileList.add(file2);
-            fileList.add(file3);
-            fileList.add(file4);
-            fileList.add(file5);
-            fileList.add(file6);
 //            Log.d("filename", date);
             ImageReader.OnImageAvailableListener readerListener = new ImageReader.OnImageAvailableListener() {
                 @Override
@@ -1040,6 +1021,7 @@ public class CameraActivity extends AppCompatActivity {
                     Image image = null;
                     try{
 //                        backgroundHandler.post(new Image)
+                        saveGPSLocation(file.getName()); //need to figure out what to do with modifiedTakePicture
                         image = imageReader.acquireNextImage();
                         ByteBuffer buffer = image.getPlanes()[0].getBuffer();
                         byte[] bytes = new byte[buffer.capacity()];
@@ -1058,9 +1040,8 @@ public class CameraActivity extends AppCompatActivity {
                 private void save(byte[] bytes) throws IOException{
                     OutputStream outputStream = null;
                     try{
-                        outputStream = new FileOutputStream(fileList.get(numPictures));
+                        outputStream = new FileOutputStream(file);
                         outputStream.write(bytes);
-                        numPictures++;
                     } finally {
                         if(outputStream != null) outputStream.close();
                     }
@@ -1080,17 +1061,8 @@ public class CameraActivity extends AppCompatActivity {
                 @Override
                 public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
                     try{
-                        //create a list of capture requests
-                        List<CaptureRequest> captureList = new ArrayList<CaptureRequest>();
                         captureRequestBuilder.addTarget(imageReader.getSurface());
-
-                        for(int i = 0; i < 6; i++){
-                            captureList.add(captureRequestBuilder.build());
-                            captureRequestBuilder.addTarget(imageReader.getSurface());
-                        }
-
-                        cameraCaptureSession.captureBurst(captureList, captureListener, backgroundHandler);
-
+                        cameraCaptureSession.setRepeatingRequest(captureRequestBuilder.build(), captureListener, backgroundHandler);
                     } catch (CameraAccessException e) {
                         e.printStackTrace();
                     }
