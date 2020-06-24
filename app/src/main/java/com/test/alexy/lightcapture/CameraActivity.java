@@ -4,6 +4,7 @@ package com.test.alexy.lightcapture;
 import android.Manifest;
 import android.annotation.TargetApi;
 import android.app.PendingIntent;
+import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -34,10 +35,12 @@ import android.location.LocationManager;
 import android.media.Image;
 import android.media.ImageReader;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Looper;
 import android.provider.Settings;
 import android.support.annotation.NonNull;
 import android.support.annotation.RequiresApi;
@@ -79,14 +82,13 @@ public class CameraActivity extends AppCompatActivity {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+    private int counter = 0;
     private boolean repeat; //continue to take gps data or not
 
     private LocationListener locationListener;
     private LocationManager locationManager;
     private double latitude;
     private double longitude;
-
 
     private Boolean displayGpsStatus() {
         ContentResolver contentResolver = getBaseContext()
@@ -120,13 +122,14 @@ public class CameraActivity extends AppCompatActivity {
     private void getGPSLocation(){
         //request permission
         ActivityCompat.requestPermissions(CameraActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
-        ActivityCompat.requestPermissions(CameraActivity.this, new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
-        ActivityCompat.requestPermissions(CameraActivity.this, new String[]{Manifest.permission.INTERNET}, 1);
+//        ActivityCompat.requestPermissions(CameraActivity.this, new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
+//        ActivityCompat.requestPermissions(CameraActivity.this, new String[]{Manifest.permission.INTERNET}, 1);
 
         //check permission
-        if (ActivityCompat.checkSelfPermission(CameraActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(CameraActivity.this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+        if (ActivityCompat.checkSelfPermission(CameraActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION,Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.INTERNET}
+//                requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.INTERNET}
+                requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}
                         ,10);
             }
             return;
@@ -234,7 +237,7 @@ public class CameraActivity extends AppCompatActivity {
 
     private void connectUsb() {
 
-        Toast.makeText(CameraActivity.this, "connectUsb()", Toast.LENGTH_LONG).show();
+//        Toast.makeText(CameraActivity.this, "connectUsb()", Toast.LENGTH_LONG).show();
 
         searchEndPoint();
 
@@ -288,7 +291,7 @@ public class CameraActivity extends AppCompatActivity {
 
         if (deviceFound == null) {
             //for usb connection
-            Toast.makeText(CameraActivity.this, "device not found", Toast.LENGTH_LONG).show();
+//            Toast.makeText(CameraActivity.this, "device not found", Toast.LENGTH_LONG).show();
         } else {
             // Search for UsbInterface with Endpoint of USB_ENDPOINT_XFER_BULK,
             // and direction USB_DIR_OUT and USB_DIR_IN
@@ -544,7 +547,7 @@ public class CameraActivity extends AppCompatActivity {
 
                 try {
 //                    repeatingCaptureThread.start();
-                    modifiedTakePicture(500);
+                    modifiedTakePicture(10);
 //                    rollingImageCapture(10);
 //                    repeatingCaptureThread.interrupt();
                     TimeUnit.MILLISECONDS.sleep(500);
@@ -1015,13 +1018,13 @@ public class CameraActivity extends AppCompatActivity {
             //set numTextFiles to 0
             numTextFiles = 0;
             //create new fileNameList
-            fileNameList = new ArrayList<String>(picture_limit);
+            fileNameList = new ArrayList<String>(picture_limit*2);
 
             //number of files
             int numFiles = list.length;
             String fileName;
 
-            for(int i = 0; i < picture_limit; i++){
+            for(int i = 0; i < picture_limit*2; i++){
                 fileName = "burst_" + (numFiles + i + 1);
                 fileNameList.add(fileName);
                 file = new File(folder.getPath() + "/" + fileName + ".jpg");
@@ -1036,9 +1039,9 @@ public class CameraActivity extends AppCompatActivity {
                     Image image = null;
                     try{
 //                        backgroundHandler.post(new Image)
+                        Log.d("NumTestFiles Counter", Integer.toString(numTextFiles));
                         saveGPSLocation(fileNameList.get(numTextFiles)); //need to figure out what to do with modifiedTakePicture
                         numTextFiles++;
-                        Log.d("NumTestFiles Counter", Integer.toString(numTextFiles));
                         image = imageReader.acquireNextImage();
                         ByteBuffer buffer = image.getPlanes()[0].getBuffer();
                         byte[] bytes = new byte[buffer.capacity()];
@@ -1081,12 +1084,10 @@ public class CameraActivity extends AppCompatActivity {
                 public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
                     try{
                         List<CaptureRequest> repeatingList = new ArrayList<CaptureRequest>();
-                        captureRequestBuilder.addTarget(imageReader.getSurface());
-                        repeatingList.add(captureRequestBuilder.build());
                         //repeat
-                        for(int i = 0; i < picture_limit-1; i++){ //why do i need to do one less here??
-                            repeatingList.add(captureRequestBuilder.build());
+                        for(int i = 0; i < picture_limit; i++){
                             captureRequestBuilder.addTarget(imageReader.getSurface());
+                            repeatingList.add(captureRequestBuilder.build());
                         }
 //                        captureRequestBuilder.addTarget(imageReader.getSurface());
                         cameraCaptureSession.setRepeatingBurst(repeatingList, null, backgroundHandler);
@@ -1173,9 +1174,11 @@ public class CameraActivity extends AppCompatActivity {
             }
         }
         if(requestCode == 10){
-            if (ActivityCompat.checkSelfPermission(CameraActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(CameraActivity.this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+//            if (ActivityCompat.checkSelfPermission(CameraActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(CameraActivity.this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            if (ActivityCompat.checkSelfPermission(CameraActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION,Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.INTERNET}
+//                    requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION,Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.INTERNET}
+                    requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}
                             ,10);
                 }
                 Toast.makeText(CameraActivity.this, "requesting permission...", Toast.LENGTH_LONG).show();
@@ -1253,11 +1256,5 @@ public class CameraActivity extends AppCompatActivity {
         backgroundThread = new HandlerThread("Camera Background");
         backgroundThread.start();
         backgroundHandler = new Handler(backgroundThread.getLooper());
-    }
-
-    private void startRepeatingCaptureThread(){
-        repeatingCaptureThread = new Thread("Repeating Capture");
-        repeatingCaptureThread.start();
-
     }
 }
